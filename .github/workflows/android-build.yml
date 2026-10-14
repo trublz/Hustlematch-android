@@ -45,6 +45,11 @@ jobs:
       - name: Sync web code to Android project
         run: npx cap sync android
 
+      - name: Bump minSdkVersion for Play Billing
+        run: |
+          sed -i "s/minSdkVersion = .*/minSdkVersion = 24/" android/variables.gradle
+          grep -n "minSdkVersion" android/variables.gradle
+
       - name: Set version name/code
         run: |
           sed -i 's/versionName ".*"/versionName "${{ inputs.version }}"/' android/app/build.gradle
