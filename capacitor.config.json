@@ -1,0 +1,9 @@
+{
+  "appId": "com.hustlematch.app",
+  "appName": "HustleMatch",
+  "webDir": "www",
+  "backgroundColor": "#14141c",
+  "android": {
+    "allowMixedContent": false
+  }
+}

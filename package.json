@@ -1,0 +1,19 @@
+{
+  "name": "hustlematch",
+  "version": "6.0.0",
+  "private": true,
+  "description": "HustleMatch — native Android wrapper (Capacitor) for the HustleMatch web app",
+  "scripts": {
+    "build:www": "bash scripts/build-www.sh",
+    "sync": "npx cap sync android",
+    "assets": "npx capacitor-assets generate --android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.0",
+    "@capacitor/core": "^6.1.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.0",
+    "@capacitor/cli": "^6.1.0"
+  }
+}
