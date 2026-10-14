@@ -9,12 +9,12 @@
     "assets": "npx capacitor-assets generate --android"
   },
   "dependencies": {
-    "@capacitor/android": "^6.1.0",
-    "@capacitor/core": "^6.1.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
     "cordova-plugin-purchase": "^13.18.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.0",
-    "@capacitor/cli": "^6.1.0"
+    "@capacitor/cli": "^7.0.0"
   }
 }
