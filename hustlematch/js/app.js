@@ -135,6 +135,7 @@ function route() {
   else if (name === "profile") view.innerHTML = vProfile();
   else if (name === "resume") view.innerHTML = parts[1] === "builder" ? vResumeBuilder() : vResume();
   else if (name === "post-job") view.innerHTML = vPostJob();
+  else if (name === "upgrade") view.innerHTML = vUpgrade();
   else view.innerHTML = vHome();
 
   afterRender(name, parts);
@@ -144,6 +145,7 @@ function afterRender(name, parts) {
   if (name === "") initHomeFx();
   if (name === "tracker" && window.HM_trackerInit) window.HM_trackerInit();
   if (name === "post-job") bindPostJob();
+  if (name === "upgrade") bindUpgrade();
   if (name === "gig" && parts[1]) bindGigDelete(parts[1]);
   bindSaveButtons();
   bindEmailForms();
@@ -1461,9 +1463,14 @@ function deleteJob(id) {
 function vPostJob() {
   const jobs = getJobs();
   const cats = CATEGORIES.filter((c) => c !== "All");
+  const billLine = billingStatusLine();
   let html =
     "<h2>💼 Post a job</h2>" +
-    '<p class="sub">Hiring? List your opening for free. It shows up in search, matching and gig pages across the app. <b>Note:</b> in this preview version, postings live on your device — the Play Store release will share them with every HustleMatch user.</p>' +
+    '<p class="sub">Hiring? List your opening — it shows up in search, matching and gig pages across the app for every HustleMatch user.</p>' +
+    billLine +
+    (window.Billing && !window.Billing.canPost().ok
+      ? '<div class="card" style="border:1px solid var(--amber)"><h3>💎 Keep hiring</h3><p class="sub">You\'ve used your free post. Grab more to keep your jobs in front of workers.</p><a class="btn btn-primary" href="#/upgrade">See plans 💎</a></div>'
+      : "") +
     '<div class="card"><h3>➕ New job posting</h3><form id="jobForm">' +
     '<label class="f-label">Job title *</label><input id="jbTitle" required placeholder="Line cook — weekends" />' +
     '<div class="row"><div><label class="f-label">Company *</label><input id="jbCompany" required placeholder="Joe\'s Diner" /></div>' +
@@ -1541,18 +1548,82 @@ function bindPostJob() {
         toast("Fill in the required fields 🙂");
         return;
       }
+      /* Monetization gate: first post free, then credits/subscription. */
+      var gate = window.Billing ? window.Billing.canPost() : { ok: true };
+      if (!gate.ok) {
+        toast("You've used your free post — upgrade to keep hiring 💎");
+        location.hash = "#/upgrade";
+        return;
+      }
       const jobs = getJobs();
       jobs.push(job);
       saveJobs(jobs);
       GIGS.push(jobToGig(job));
       if (window.HMFirebase) HMFirebase.pushJob(job);
+      if (window.Billing) window.Billing.consumePost();
       toast("Job posted! 💼");
       location.hash = "#/gig/" + job.id;
     };
 }
 
-function bindGigDelete(id) {
-  const b = document.getElementById("delJobBtn");
+/* ---------------- employer upgrade / paywall ---------------- */
+function billingStatusLine() {
+  if (!window.Billing) return "";
+  const st = window.Billing.status();
+  if (st.subActive) {
+    const until = new Date(st.subUntil).toISOString().slice(0, 10);
+    return '<p class="sub">💎 <b>Unlimited posting active</b> until ' + until + ".</p>";
+  }
+  const bits = [];
+  if (st.freeAvailable) bits.push("✨ 1 free post available");
+  if (st.credits > 0) bits.push("🎟️ " + st.credits + " post credit" + (st.credits === 1 ? "" : "s"));
+  if (!bits.length) bits.push("No posts left — grab more below 👇");
+  return '<p class="sub">💼 ' + bits.join(" · ") + ".</p>";
+}
+
+function vUpgrade() {
+  const demo = window.Billing && window.Billing.isDemo();
+  const singlePrice = window.Billing ? window.Billing.priceFor(window.Billing.PRODUCTS.SINGLE) : "$4.99";
+  const monthlyPrice = window.Billing ? window.Billing.priceFor(window.Billing.PRODUCTS.MONTHLY) : "$19.99/mo";
+  return (
+    "<h2>💎 Hire on HustleMatch</h2>" +
+    '<p class="sub">Your job posts reach thousands of gig workers browsing the app. Your <b>first post is free</b> — after that, pick a plan. Job seekers always browse free.</p>' +
+    billingStatusLine() +
+    (demo ? '<div class="card" style="border:1px dashed var(--amber)"><p style="margin:0">🧪 <b>Demo mode</b> — purchases are simulated, no real charges. Live billing activates in the Play Store release.</p></div>' : "") +
+    '<div class="card"><h3>🎟️ Single post</h3>' +
+    '<p class="sub">One extra job posting, live for everyone to see.</p>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+    '<b style="font-size:22px">' + singlePrice + "</b>" +
+    '<button class="btn btn-primary" data-buy="' + (window.Billing ? window.Billing.PRODUCTS.SINGLE : "") + '">Buy post 🎟️</button>' +
+    "</div></div>" +
+    '<div class="card"><h3>💎 Monthly unlimited</h3>' +
+    '<p class="sub">Post as many jobs as you want. Renews monthly, cancel anytime.</p>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">' +
+    '<b style="font-size:22px">' + monthlyPrice + "</b>" +
+    '<button class="btn btn-primary" data-buy="' + (window.Billing ? window.Billing.PRODUCTS.MONTHLY : "") + '">Subscribe 💎</button>' +
+    "</div></div>" +
+    '<div style="text-align:center;margin:18px 0"><button class="btn btn-ghost" id="restoreBtn">Restore purchases</button></div>' +
+    '<p class="sub" style="text-align:center">Payments are handled securely by Google Play.</p>'
+  );
+}
+
+function bindUpgrade() {
+  document.querySelectorAll("[data-buy]").forEach((b) => {
+    b.onclick = () => {
+      const pid = b.dataset.buy;
+      if (!pid || !window.Billing) return;
+      b.disabled = true;
+      window.Billing.buy(pid).then((ok) => {
+        b.disabled = false;
+        if (ok) location.hash = "#/post-job";
+      });
+    };
+  });
+  const r = document.getElementById("restoreBtn");
+  if (r) r.onclick = () => window.Billing && window.Billing.restore();
+}
+
+function bindGigDelete(id) {  const b = document.getElementById("delJobBtn");
   if (b)
     b.onclick = () => {
       deleteJob(id);
@@ -1567,6 +1638,7 @@ document.getElementById("navToggle").onclick = () => {
 };
 getJobs().forEach((j) => GIGS.push(jobToGig(j)));
 if (window.HMFirebase) HMFirebase.init();
+if (window.Billing) window.Billing.init();
 document.getElementById("appVer").textContent = "v6 · " + GIGS.length + " gigs";
 window.addEventListener("hashchange", route);
 route();
