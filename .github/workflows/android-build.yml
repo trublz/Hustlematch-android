@@ -1,0 +1,71 @@
+name: Build Android AAB
+
+# Builds a signed release .aab for Google Play.
+# Run manually from the Actions tab ("Run workflow").
+# Requires 4 repo secrets (see README): KEYSTORE_BASE64, KEY_ALIAS, KEYSTORE_PASSWORD, KEY_PASSWORD.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version name (e.g. 6.0.0)"
+        required: true
+        default: "6.0.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Build web assets into www/
+        run: bash scripts/build-www.sh
+
+      - name: Generate app icons
+        run: npx capacitor-assets generate --android
+
+      - name: Add Android platform (first run only)
+        run: |
+          if [ ! -d android ]; then
+            npx cap add android
+          fi
+
+      - name: Sync web code to Android project
+        run: npx cap sync android
+
+      - name: Set version name/code
+        run: |
+          sed -i 's/versionName ".*"/versionName "${{ inputs.version }}"/' android/app/build.gradle
+          sed -i 's/versionCode [0-9]*/versionCode ${{ github.run_number }}/' android/app/build.gradle
+          grep -n "versionName\|versionCode" android/app/build.gradle
+
+      - name: Build release bundle
+        run: cd android && ./gradlew bundleRelease
+
+      - name: Sign AAB
+        uses: r0adkll/sign-android-release@v1
+        id: sign
+        with:
+          releaseDirectory: android/app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.KEYSTORE_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+
+      - name: Upload signed AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: hustlematch-${{ inputs.version }}-aab
+          path: ${{ steps.sign.outputs.signedReleaseFile }}
